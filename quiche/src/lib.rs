@@ -8908,7 +8908,7 @@ mod packet;
 mod path;
 mod pmtud;
 mod rand;
-mod range_buf;
+pub mod range_buf;
 mod ranges;
 mod recovery;
 mod stream;
