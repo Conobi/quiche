@@ -8901,7 +8901,7 @@ mod error;
 #[cfg(feature = "ffi")]
 mod ffi;
 mod flowcontrol;
-mod frame;
+pub mod frame;
 pub mod h3;
 mod minmax;
 mod packet;
