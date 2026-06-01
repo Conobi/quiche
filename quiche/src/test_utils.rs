@@ -473,6 +473,52 @@ pub fn encode_pkt(
     Ok(written)
 }
 
+/// Encode a QUIC packet with reserved bits flipped in the cleartext first byte.
+///
+/// This helper wraps [`encode_pkt`] and XORs `reserved_mask` into the wire
+/// representation of the first header byte so that the receiver sees the
+/// masked bits in cleartext after header-protection removal.
+///
+/// # How it works
+///
+/// Header protection (RFC 9001 §5.4) applies a per-packet XOR mask to the
+/// first byte:
+///
+///   `wire[0] = cleartext[0] ^ (hp_mask[0] & protection_bits)`
+///
+/// Because XOR is its own inverse and commutative, flipping bits in the
+/// cleartext is equivalent to flipping the same bits in the wire byte:
+///
+///   `wire'[0] = wire[0] ^ reserved_mask`
+///
+/// The receiver un-applies HP and recovers `cleartext[0] ^ reserved_mask`,
+/// which is exactly the modified reserved-bits value navette's QUIC parser
+/// validates (RFC 9000 §17.2 for long headers, §17.3.1 for short headers).
+///
+/// # Parameters
+///
+/// * `conn`          — mutable reference to the quiche connection (owns keys)
+/// * `pkt_type`      — packet type determining the encryption level
+/// * `frames`        — frames to encode in the packet payload
+/// * `reserved_mask` — bitmask of reserved bits to flip (e.g. `0x0c` for
+///                     long-header bits 2–3, `0x18` for short-header bits
+///                     3–4 per RFC 9000 §17.3.1)
+/// * `buf`           — output buffer (must be large enough for the packet)
+///
+/// Returns the number of written bytes, same as [`encode_pkt`].
+pub fn encode_pkt_reserved_bits(
+    conn: &mut Connection, pkt_type: Type, frames: &[frame::Frame],
+    reserved_mask: u8, buf: &mut [u8],
+) -> Result<usize> {
+    let written = encode_pkt(conn, pkt_type, frames, buf)?;
+    // XOR the reserved bits into the HP-protected first byte.
+    // Since HP is a pure XOR operation, flipping bits in the cleartext first
+    // byte is equivalent to flipping them in the wire byte (the HP mask
+    // cancels out at the receiver during decrypt_hdr).
+    buf[0] ^= reserved_mask;
+    Ok(written)
+}
+
 pub fn decode_pkt(
     conn: &mut Connection, buf: &mut [u8],
 ) -> Result<Vec<frame::Frame>> {
